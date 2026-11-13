@@ -13,7 +13,33 @@ async function api(path,options={}){if(!API)throw Error("API URL not configured.
 function tab(name){for(const id of ["week","plan","feedback"])show(id,id===name);document.querySelectorAll("[data-tab]").forEach(b=>b.className=b.dataset.tab===name?"primary":"secondary")}
 function populateSelect(select,paths){select.replaceChildren();for(const path of paths){const d=dateFromFile(path);if(!d)continue;const o=el("option",{value:path},weeksToGo(d)+" · "+humanDate(d));select.append(o)}}
 function setWeek(path){state.current=path;const d=dateFromFile(path);$("countdown").textContent=d?weeksToGo(d):"—";$("range").textContent=d?humanDate(d)+" · Monday–Sunday":"";renderSessions(path)}
-async function renderSessions(path){const root=$("sessions");root.replaceChildren();if(!path)return;try{const result=await api("/api/file?path="+encodeURIComponent(path));const text=result.content;const lines=text.split("\n");let blocks=[];let current=null;for(const line of lines){const heading=line.match(/^##\s+(.+)/);if(heading){if(current)blocks.push(current);current={title:heading[1],body:[]}}else if(current)current.body.push(line)}if(current)blocks.push(current);if(!blocks.length){root.append(el("pre",{},text));return}for(const b of blocks){const card=el("article",{class:"card"});card.append(el("h3",{},b.title));card.append(el("pre",{},b.body.join("\n").trim()||"No notes yet"));root.append(card)}}catch(e){root.append(el("p",{class:"danger"},e.message))}}
+async function renderSessions(path){
+ const root=$("sessions");root.replaceChildren();if(!path)return;
+ const d=dateFromFile(path);
+ const intro=el("p",{class:"muted"},"Scheduled workouts from the approved GitHub plan. Feedback is edited separately in the Feedback tab.");root.append(intro);
+ if(d!=="2026-11-09"){
+   root.append(el("div",{class:"card"},"No dated approved workout schedule is available for this week in the connected repository. See Full plan for the master instructions; feedback is not a workout prescription."));
+   return;
+ }
+ try{
+   const r=await api("/api/file?path="+encodeURIComponent("plans/week03-approved-amendments-2026-11-08.md"));
+   const lines=r.content.split("\n");
+   const table=lines.filter(l=>/^\\|/.test(l));
+   const parseCells=l=>l.split("|").slice(1,-1).map(x=>x.trim());
+   const rows=table.slice(2).map(parseCells).filter(c=>c.length>=4);
+   const makeCard=(date,title,details,pack)=>{
+     const card=el("article",{class:"card"});
+     card.append(el("h3",{},date+" · "+title));
+     card.append(el("p",{},details));
+     if(pack)card.append(el("p",{class:"muted"},"Pack: "+pack));
+     root.append(card);
+   };
+   for(const c of rows)makeCard(c[0],c[1],c[2]+" minutes",c[3]);
+   makeCard("Wed 11 Nov","Introductory leg strength","15–20 minutes · Light step-ups, calf raises, supported split squats and balance. Optional easy bouldering.","Not applicable");
+   makeCard("Fri 13 Nov","Optional easy solo bouldering","No two-hour session with Jo this Friday.","Not applicable");
+   root.append(el("p",{class:"muted"},"Approved running budget: up to 175 minutes. Thursday ends at 10 km or 80 elapsed minutes, whichever comes first. The historical amendment notes an earlier Garmin deployment discrepancy; see Full plan for details."));
+ }catch(e){root.append(el("p",{class:"danger"},"Could not load approved workout schedule: "+e.message))}
+}
 
 // Keep the existing Markdown structure and modify only the user's selected lines.
 function parseFeedback(content){
