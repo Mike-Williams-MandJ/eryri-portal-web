@@ -87,8 +87,25 @@ $("advancedtoggle").onclick=()=>{
  $("advancedtoggle").textContent=open?"Hide advanced editor":"Advanced: edit original Markdown";
 };
 async function loadFeedback(path){if(state.dirty&&!confirm("Discard unsaved feedback edits?"))return false;try{const r=await api("/api/file?path="+encodeURIComponent(path));$("editor").value=r.content;state.feedbackOriginal=r.content;show("advanced",false);$("advancedtoggle").textContent="Advanced: edit original Markdown";renderFeedbackForm(r.content);state.sha=r.sha;state.dirty=false;$("savestatus").textContent="Loaded from GitHub.";return true}catch(e){$("savestatus").textContent=e.message;return false}}
-async function loadIndex(){const r=await api("/api/index");state.files=r.files||[];state.feedback=state.files.filter(x=>/^feedback\/week\d+-\d{4}-\d{2}-\d{2}\.md$/.test(x)).sort().reverse();populateSelect($("weekselect"),state.feedback);populateSelect($("feedbackweek"),state.feedback);const documents=$("documents");documents.replaceChildren();documents.append(el("p",{class:"muted"},"Current master documents and draft material held in GitHub. The complete draft training programme has not yet been uploaded to this repository."));const allowed=state.files.filter(x=>x==="TRAINING_MASTER.md"||x==="WEEKLY_WORKFLOW.md"||x.startsWith("plans/")||x.startsWith("feedback/")&&x.endsWith(".md")||x==="automation/garmin/week03.json");for(const path of allowed){const card=el("div",{class:"card week"});card.append(el("span",{},path));const b=el("button",{class:"secondary"},"View");b.onclick=async()=>{const r=await api("/api/file?path="+encodeURIComponent(path));const pre=card.querySelector("pre");if(pre)pre.remove();card.append(el("pre",{},r.content));b.textContent="Refresh"};card.append(b);documents.append(card)}
-const master=[...documents.querySelectorAll(".week")].find(card=>card.querySelector("span")?.textContent==="TRAINING_MASTER.md");if(master)master.querySelector("button")?.click();
+async function loadIndex(){const r=await api("/api/index");state.files=r.files||[];state.feedback=state.files.filter(x=>/^feedback\/week\d+-\d{4}-\d{2}-\d{2}\.md$/.test(x)).sort().reverse();populateSelect($("weekselect"),state.feedback);populateSelect($("feedbackweek"),state.feedback);const documents=$("documents");documents.replaceChildren();
+documents.append(el("p",{class:"muted"},"The full draft programme is not yet in GitHub. The approved Week 3 amendments and master instructions are available below; these are not the complete multi-week schedule."));
+const allowed=state.files.filter(x=>x==="TRAINING_MASTER.md"||x==="WEEKLY_WORKFLOW.md"||x.startsWith("plans/")&&x.endsWith(".md"));
+const labels={"TRAINING_MASTER.md":"Master training instructions","WEEKLY_WORKFLOW.md":"Weekly review and planning workflow","plans/week03-approved-amendments-2026-11-08.md":"27 weeks to go · approved workout amendments"};
+for(const path of allowed){
+ const card=el("article",{class:"card plan-document"});
+ card.append(el("h3",{},labels[path]||path.split("/").pop().replace(/[-_]/g," ")));
+ const b=el("button",{class:"secondary",type:"button"},"Show document");
+ const content=el("div",{class:"plan-content hidden"});
+ b.onclick=async()=>{if(!content.classList.contains("hidden")){content.classList.add("hidden");b.textContent="Show document";return}
+ b.disabled=true;b.textContent="Loading…";
+ try{const r=await api("/api/file?path="+encodeURIComponent(path));content.replaceChildren();
+ for(const line of r.content.split("\\n")){if(!line.trim())continue;
+ if(/^#{1,4}\\s/.test(line)){content.append(el("h4",{},line.replace(/^#+\\s*/,"")));continue}
+ content.append(el("p",{},line.replace(/\\*\\*/g,"").replace(/^[-*]\\s/,"• ")))}
+ content.classList.remove("hidden");b.textContent="Hide document"
+ }catch(e){content.replaceChildren(el("p",{class:"danger"},e.message));content.classList.remove("hidden");b.textContent="Retry"}finally{b.disabled=false}};
+ card.append(b,content);documents.append(card);
+}
 const today=new Date().toISOString().slice(0,10);const target=state.feedback.find(p=>dateFromFile(p)<=today)||state.feedback[0];if(target){$("weekselect").value=target;$("feedbackweek").value=target;setWeek(target);await loadFeedback(target)}show("main",true);show("signout",true);show("signin",false);status("")}
 async function begin(){if(!API){status("API not configured yet; see deployment guide.",true);return}location.href=API+"/auth/start"}
 async function exchangeTicket(){const fragment=new URLSearchParams(location.hash.slice(1));const ticket=fragment.get("ticket");if(!ticket)return;history.replaceState(null,"",location.pathname+location.search);const r=await fetch(API+"/auth/exchange",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({ticket})});const data=await r.json();if(!r.ok)throw Error(data.error||"Sign-in failed");state.token=data.session;sessionStorage.setItem("eryri_session",state.token)}
