@@ -1,15 +1,21 @@
 {
   "name": "Eryri 56K Training Portal",
-  "short_name": "Eryri Training",
+  "short_name": "Eryri 56K",
   "start_url": "./",
   "display": "standalone",
   "background_color": "#f2f6f5",
   "theme_color": "#102d36",
   "icons": [
     {
-      "src": "./eryri-icon.svg",
-      "sizes": "any",
-      "type": "image/svg+xml",
+      "src": "./eryri-icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "./eryri-icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
       "purpose": "any maskable"
     }
   ]
