@@ -99,9 +99,9 @@ for(const path of allowed){
  b.onclick=async()=>{if(!content.classList.contains("hidden")){content.classList.add("hidden");b.textContent="Show document";return}
  b.disabled=true;b.textContent="Loading…";
  try{const r=await api("/api/file?path="+encodeURIComponent(path));content.replaceChildren();
- for(const line of r.content.split("\\n")){if(!line.trim())continue;
- if(/^#{1,4}\\s/.test(line)){content.append(el("h4",{},line.replace(/^#+\\s*/,"")));continue}
- content.append(el("p",{},line.replace(/\\*\\*/g,"").replace(/^[-*]\\s/,"• ")))}
+ for(const line of r.content.split("\n")){if(!line.trim())continue;
+ if(/^#{1,4}\s/.test(line)){content.append(el("h4",{},line.replace(/^#+\s*/,"")));continue}
+ content.append(el("p",{},line.replace(/\*\*/g,"").replace(/^[-*]\s/,"• ")))}
  content.classList.remove("hidden");b.textContent="Hide document"
  }catch(e){content.replaceChildren(el("p",{class:"danger"},e.message));content.classList.remove("hidden");b.textContent="Retry"}finally{b.disabled=false}};
  card.append(b,content);documents.append(card);
