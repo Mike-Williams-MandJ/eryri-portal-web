@@ -2,7 +2,7 @@
 const API=(window.ERYRI_API_BASE||"").replace(/\/$/,"");
 const $=id=>document.getElementById(id);
 const race=new Date("2027-05-15T12:00:00Z");
-const state={token:sessionStorage.getItem("eryri_session")||"",files:[],feedback:[],current:null,sha:null,dirty:false,feedbackOriginal:"",feedbackRows:[]};
+const state={token:sessionStorage.getItem("eryri_session")||"",files:[],feedback:[],current:null,sha:null,dirty:false,feedbackOriginal:"",feedbackRows:[],activities:[],activitiesFetched:false,activityError:""};
 const show=(id,on)=>$(id).classList.toggle("hidden",!on);
 function status(message,error=false){$("status").textContent=message;$("status").classList.toggle("danger",error)}
 function weeksToGo(date){const monday=new Date(date+"T12:00:00Z");return Math.max(0,Math.ceil((race-monday)/604800000))+" weeks to go"}
@@ -10,6 +10,24 @@ function dateFromFile(path){return path.match(/week\d+-(\d{4}-\d{2}-\d{2})\.md$/
 function humanDate(s){return new Date(s+"T12:00:00Z").toLocaleDateString("en-GB",{day:"numeric",month:"short",year:"numeric",timeZone:"UTC"})}
 function el(tag,attrs={},text){const e=document.createElement(tag);for(const [k,v] of Object.entries(attrs)){if(k==="class")e.className=v;else e.setAttribute(k,v)}if(text!==undefined)e.textContent=text;return e}
 async function api(path,options={}){if(!API)throw Error("API URL not configured. Follow portal/DEPLOY.md.");const res=await fetch(API+path,{...options,headers:{"Authorization":"Bearer "+state.token,...(options.body?{"Content-Type":"application/json"}:{}),...(options.headers||{})},cache:"no-store"});const data=await res.json().catch(()=>({}));if(!res.ok)throw Error(data.error||"Request failed ("+res.status+")");return data}
+async function loadActivities(){
+ const start=dateFromFile($("weekselect").value);
+ if(!start)return;
+ const oldest=start,newest=new Date(new Date(start+"T12:00:00Z").getTime()+6*86400000).toISOString().slice(0,10);
+ try{const r=await api("/api/activities?oldest="+oldest+"&newest="+newest);state.activities=r.activities||[];state.activitiesFetched=true;state.activityError="";}
+ catch(e){state.activities=[];state.activitiesFetched=false;state.activityError=e.message;}
+}
+function sessionActivity(date,title){
+ const m=date.match(/^(Mon|Tue|Wed|Thu|Fri|Sat|Sun) (\d+) Nov$/);
+ if(!m)return null;
+ const dateKey="2026-11-"+m[2].padStart(2,"0");
+ const same=state.activities.filter(a=>a.date===dateKey);
+ const isRun=!/strength|bouldering/i.test(title);
+ const candidates=same.filter(a=>isRun?/^(run|trailrun|virtualrun|treadmill)$/i.test(a.type):/strength/i.test(title)?/strength|weight/i.test(a.type):/climb|boulder/i.test(a.type));
+ if(candidates.length===1)return {status:"completed",activity:candidates[0]};
+ if(candidates.length>1||same.length)return {status:"review",activity:null};
+ return {status:"awaiting",activity:null};
+}
 function tab(name){for(const id of ["week","plan","feedback"])show(id,id===name);document.querySelectorAll("[data-tab]").forEach(b=>b.className=b.dataset.tab===name?"primary":"secondary")}
 function populateSelect(select,paths){select.replaceChildren();for(const path of paths){const d=dateFromFile(path);if(!d)continue;const o=el("option",{value:path},weeksToGo(d)+" · "+humanDate(d));select.append(o)}}
 function setWeek(path){state.current=path;const d=dateFromFile(path);$("countdown").textContent=d?weeksToGo(d):"—";$("range").textContent=d?humanDate(d)+" · Monday–Sunday":"";renderSessions(path)}
@@ -32,6 +50,13 @@ async function renderSessions(path){
      card.append(el("h3",{},date+" · "+title));
      card.append(el("p",{},details));
      if(pack)card.append(el("p",{class:"muted"},"Pack: "+pack));
+     if(state.activitiesFetched){
+       const match=sessionActivity(date,title);
+       if(match?.status==="completed"){const a=match.activity;const distance=a.distance>0?(a.distance/1000).toFixed(2)+" km · ":"";card.append(el("p",{class:"muted"},"✓ Completed · "+a.name+" · "+distance+Math.round((a.moving_time||a.elapsed_time)/60)+" min"));}
+       else if(match?.status==="review")card.append(el("p",{class:"muted"},"? Activity recorded on this date — needs review"));
+       else card.append(el("p",{class:"muted"},"○ Awaiting activity"));
+     }
+
      root.append(card);
    };
    const sessions=rows.map(c=>({date:c[0],title:c[1],details:c[2]+" minutes",pack:c[3]}));
@@ -40,6 +65,7 @@ async function renderSessions(path){
    const dayOrder={Mon:0,Tue:1,Wed:2,Thu:3,Fri:4,Sat:5,Sun:6};
    sessions.sort((a,b)=>(dayOrder[a.date.slice(0,3)]??7)-(dayOrder[b.date.slice(0,3)]??7));
    for(const session of sessions)makeCard(session.date,session.title,session.details,session.pack);
+   if(state.activityError)root.append(el("p",{class:"muted"},"Activity sync unavailable: "+state.activityError));
    root.append(el("p",{class:"muted"},"Approved running budget: up to 175 minutes. Thursday ends at 10 km or 80 elapsed minutes, whichever comes first. The historical amendment notes an earlier Garmin deployment discrepancy; see Full plan for details."));
  }catch(e){root.append(el("p",{class:"danger"},"Could not load approved workout schedule: "+e.message))}
 }
@@ -112,13 +138,14 @@ for(const path of allowed){
  }catch(e){content.replaceChildren(el("p",{class:"danger"},e.message));content.classList.remove("hidden");b.textContent="Retry"}finally{b.disabled=false}};
  card.append(b,content);documents.append(card);
 }
-const today=new Date().toISOString().slice(0,10);const target=state.feedback.find(p=>dateFromFile(p)<=today)||state.feedback[0];if(target){$("weekselect").value=target;$("feedbackweek").value=target;setWeek(target);await loadFeedback(target)}show("main",true);show("signout",true);show("signin",false);status("")}
+const today=new Date().toISOString().slice(0,10);const target=state.feedback.find(p=>dateFromFile(p)<=today)||state.feedback[0];if(target){$("weekselect").value=target;$("feedbackweek").value=target;setWeek(target);await loadFeedback(target);await loadActivities();await renderSessions(target)}show("main",true);show("signout",true);show("signin",false);status("")}
 async function begin(){if(!API){status("API not configured yet; see deployment guide.",true);return}location.href=API+"/auth/start"}
 async function exchangeTicket(){const fragment=new URLSearchParams(location.hash.slice(1));const ticket=fragment.get("ticket");if(!ticket)return;history.replaceState(null,"",location.pathname+location.search);const r=await fetch(API+"/auth/exchange",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({ticket})});const data=await r.json();if(!r.ok)throw Error(data.error||"Sign-in failed");state.token=data.session;sessionStorage.setItem("eryri_session",state.token)}
+$("refresh").onclick=async()=>{if(state.dirty&&!confirm("Discard unsaved feedback edits and refresh?"))return;const button=$("refresh");button.disabled=true;status("Checking Intervals.icu for workout results…");try{if(!state.token){location.reload();return}await loadActivities();await renderSessions($("weekselect").value);await loadFeedback($("feedbackweek").value);status(state.activityError?"Activity check unavailable: "+state.activityError:"Workout results checked. Refresh the page separately to load newly deployed app code.",!!state.activityError)}catch(e){status("Refresh failed: "+e.message,true)}finally{button.disabled=false}};
 $("signin").onclick=begin;$("signout").onclick=()=>{const token=state.token;state.token="";sessionStorage.removeItem("eryri_session");apiLogout(token);show("main",false);show("signin",true);show("signout",false);status("Signed out.")};
 async function apiLogout(token){if(API&&token)try{await fetch(API+"/auth/logout",{method:"POST",headers:{"Authorization":"Bearer "+token}})}catch{}}
 document.querySelectorAll("[data-tab]").forEach(b=>b.onclick=()=>tab(b.dataset.tab));
-$("weekselect").onchange=e=>setWeek(e.target.value);
+$("weekselect").onchange=async e=>{setWeek(e.target.value);await loadActivities();await renderSessions(e.target.value)};
 $("feedbackweek").onchange=async e=>{const prior=$("feedbackweek").dataset.previous||state.feedback[0];if(await loadFeedback(e.target.value))$("feedbackweek").dataset.previous=e.target.value;else e.target.value=prior};
 $("editor").oninput=()=>{state.dirty=true;$("savestatus").textContent="Unsaved changes"};
 $("reload").onclick=()=>loadFeedback($("feedbackweek").value);
