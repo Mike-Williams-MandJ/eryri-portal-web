@@ -24,9 +24,9 @@ async function renderSessions(path){
  try{
    const r=await api("/api/file?path="+encodeURIComponent("plans/week03-approved-amendments-2026-11-08.md"));
    const lines=r.content.split("\n");
-   const table=lines.filter(l=>/^\\|/.test(l));
+   const table=lines.filter(l=>l.trimStart().startsWith("|"));
    const parseCells=l=>l.split("|").slice(1,-1).map(x=>x.trim());
-   const rows=table.slice(2).map(parseCells).filter(c=>c.length>=4);
+   const rows=table.slice(2).map(parseCells).filter(c=>c.length>=4 && /^\d/.test(c[2]) || c.length>=4 && /^up to \d/.test(c[2]));
    const makeCard=(date,title,details,pack)=>{
      const card=el("article",{class:"card"});
      card.append(el("h3",{},date+" · "+title));
