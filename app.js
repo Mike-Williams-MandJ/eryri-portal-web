@@ -34,9 +34,12 @@ async function renderSessions(path){
      if(pack)card.append(el("p",{class:"muted"},"Pack: "+pack));
      root.append(card);
    };
-   for(const c of rows)makeCard(c[0],c[1],c[2]+" minutes",c[3]);
-   makeCard("Wed 11 Nov","Introductory leg strength","15–20 minutes · Light step-ups, calf raises, supported split squats and balance. Optional easy bouldering.","Not applicable");
-   makeCard("Fri 13 Nov","Optional easy solo bouldering","No two-hour session with Jo this Friday.","Not applicable");
+   const sessions=rows.map(c=>({date:c[0],title:c[1],details:c[2]+" minutes",pack:c[3]}));
+   sessions.push({date:"Wed 11 Nov",title:"Introductory leg strength",details:"15–20 minutes · Light step-ups, calf raises, supported split squats and balance. Optional easy bouldering.",pack:"Not applicable"});
+   sessions.push({date:"Fri 13 Nov",title:"Optional easy solo bouldering",details:"No two-hour session with Jo this Friday.",pack:"Not applicable"});
+   const dayOrder={Mon:0,Tue:1,Wed:2,Thu:3,Fri:4,Sat:5,Sun:6};
+   sessions.sort((a,b)=>(dayOrder[a.date.slice(0,3)]??7)-(dayOrder[b.date.slice(0,3)]??7));
+   for(const session of sessions)makeCard(session.date,session.title,session.details,session.pack);
    root.append(el("p",{class:"muted"},"Approved running budget: up to 175 minutes. Thursday ends at 10 km or 80 elapsed minutes, whichever comes first. The historical amendment notes an earlier Garmin deployment discrepancy; see Full plan for details."));
  }catch(e){root.append(el("p",{class:"danger"},"Could not load approved workout schedule: "+e.message))}
 }
