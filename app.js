@@ -106,6 +106,7 @@ async function renderSessions(path){
    const makeCard=(date,title,details,pack)=>{
      const card=el("article",{class:"card"});
      card.append(el("h3",{},date+" · "+title));
+     if(title==="Rest day"){root.append(card);return;}
      const planFold=el("details",{class:"session-plan-fold"});
      if(state.feedbackOpen[path+"|plan|"+date])planFold.open=true;
      planFold.append(el("summary",{},"Workout details"));
