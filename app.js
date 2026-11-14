@@ -75,8 +75,10 @@ $("session-feedback-close").onclick=closeSessionFeedback;
 $("session-feedback-modal").addEventListener("click",e=>{if(e.target===$("session-feedback-modal"))closeSessionFeedback()});
 function tab(name){for(const id of ["week","plan"])show(id,id===name);document.querySelectorAll("[data-tab]").forEach(b=>b.className=b.dataset.tab===name?"primary":"secondary")}
 function populateSelect(select,paths){select.replaceChildren();for(const path of paths){const d=dateFromFile(path);if(!d)continue;const o=el("option",{value:path},weeksToGo(d)+" · "+humanDate(d));select.append(o)}}
-function setWeek(path){state.current=path;const d=dateFromFile(path);$("countdown").textContent=d?weeksToGo(d):"—";$("range").textContent=d?humanDate(d)+" · Monday–Sunday":"";renderSessions(path)}
+function setWeek(path){state.current=path;const d=dateFromFile(path);$("countdown").textContent=d?weeksToGo(d):"—";$("range").textContent=d?humanDate(d)+" · Monday–Sunday":""}
+let sessionsRenderId=0;
 async function renderSessions(path){
+ const renderId=++sessionsRenderId;
  const root=$("sessions");root.replaceChildren();if(!path)return;
  const d=dateFromFile(path);
 
@@ -100,6 +102,7 @@ async function renderSessions(path){
        }
      }
    }catch(e){root.append(el("p",{class:"muted"},"Feedback could not be loaded: "+e.message))}
+   if(renderId!==sessionsRenderId)return;
    const makeCard=(date,title,details,pack)=>{
      const card=el("article",{class:"card"});
      card.append(el("h3",{},date+" · "+title));
