@@ -28,6 +28,50 @@ function sessionActivity(date,title){
  if(candidates.length>1||same.length)return {status:"review",activity:null};
  return {status:"awaiting",activity:null};
 }
+const sessionFeedbackLabels={
+ "Mon 9 Nov":"Monday 9 November",
+ "Tue 10 Nov":"Tuesday 10 November",
+ "Wed 11 Nov":"Wednesday 11 November",
+ "Thu 12 Nov":"Thursday 12 November",
+ "Sat 14 Nov":"Saturday 14 November"
+};
+let modalSaving=false;
+function closeSessionFeedback(){if(modalSaving)return;if($("session-feedback-text").value!==$("session-feedback-text").dataset.original&&!confirm("Discard unsaved session feedback?"))return;$("session-feedback-modal").classList.add("hidden");$("session-feedback-text").value="";$("session-feedback-message").textContent="";}
+async function openSessionFeedback(date){
+ const path=$("weekselect").value, prefix=sessionFeedbackLabels[date];
+ if(!prefix)return;
+ const modal=$("session-feedback-modal"),area=$("session-feedback-text"),save=$("session-feedback-save");
+ modal.classList.remove("hidden");$("session-feedback-title").textContent=date+" · Feedback";$("session-feedback-message").textContent="Loading saved feedback…";area.disabled=true;save.disabled=true;modal.dataset.path=path;modal.dataset.prefix=prefix;
+ try{
+  const r=await api("/api/file?path="+encodeURIComponent(path));
+  if(modal.dataset.path!==path||modal.classList.contains("hidden"))return;
+  const row=parseFeedback(r.content).find(x=>x.label.startsWith(prefix));
+  if(!row)throw Error("No feedback entry exists for this session.");
+  area.value=row.value;area.dataset.original=row.value;area.disabled=false;save.disabled=false;$("session-feedback-message").textContent="Edit your comments, then save to GitHub.";
+ }catch(e){$("session-feedback-message").textContent="Could not load feedback: "+e.message}
+}
+async function saveSessionFeedback(){
+ if(modalSaving)return;
+ const modal=$("session-feedback-modal"),area=$("session-feedback-text"),path=modal.dataset.path,prefix=modal.dataset.prefix;
+ modalSaving=true;$("session-feedback-save").disabled=true;$("session-feedback-close").disabled=true;$("session-feedback-message").textContent="Saving to GitHub…";
+ try{
+  // Always use the newest file SHA so edits from another device are preserved.
+  const latest=await api("/api/file?path="+encodeURIComponent(path));
+  const lines=latest.content.split("\n"),row=parseFeedback(latest.content).find(x=>x.label.startsWith(prefix));
+  if(!row)throw Error("Session feedback entry was not found.");
+  const savedValue=row.value.trim(),original=area.dataset.original.trim(),next=area.value.trim().replace(/\r?\n/g,"; ");
+  if(savedValue!==original&&savedValue!==next)throw Error("Feedback was changed on another device. Copy your text before reopening this session.");
+  lines[row.index]="- "+row.label+": "+(next||"**Not supplied**");
+  await api("/api/feedback",{method:"PUT",body:JSON.stringify({path,content:lines.join("\n"),sha:latest.sha})});
+  area.dataset.original=next;$("session-feedback-message").textContent="Saved to GitHub.";
+  if($("feedbackweek").value===path&&!state.dirty)await loadFeedback(path);
+  modal.classList.add("hidden");
+ }catch(e){$("session-feedback-message").textContent="Not saved: "+e.message}
+ finally{modalSaving=false;$("session-feedback-save").disabled=false;$("session-feedback-close").disabled=false}
+}
+$("session-feedback-save").onclick=saveSessionFeedback;
+$("session-feedback-close").onclick=closeSessionFeedback;
+$("session-feedback-modal").addEventListener("click",e=>{if(e.target===$("session-feedback-modal"))closeSessionFeedback()});
 function tab(name){for(const id of ["week","plan","feedback"])show(id,id===name);document.querySelectorAll("[data-tab]").forEach(b=>b.className=b.dataset.tab===name?"primary":"secondary")}
 function populateSelect(select,paths){select.replaceChildren();for(const path of paths){const d=dateFromFile(path);if(!d)continue;const o=el("option",{value:path},weeksToGo(d)+" · "+humanDate(d));select.append(o)}}
 function setWeek(path){state.current=path;const d=dateFromFile(path);$("countdown").textContent=d?weeksToGo(d):"—";$("range").textContent=d?humanDate(d)+" · Monday–Sunday":"";renderSessions(path)}
@@ -57,6 +101,7 @@ async function renderSessions(path){
        else card.append(el("p",{class:"muted"},"○ Awaiting activity"));
      }
 
+     if(sessionFeedbackLabels[date]){const b=el("button",{class:"secondary",type:"button"},"Enter / edit feedback");b.onclick=()=>openSessionFeedback(date);card.append(b);}
      root.append(card);
    };
    const sessions=rows.map(c=>({date:c[0],title:c[1],details:c[2]+" minutes",pack:c[3]}));
