@@ -2,7 +2,7 @@
 const API=(window.ERYRI_API_BASE||"").replace(/\/$/,"");
 const $=id=>document.getElementById(id);
 const race=new Date("2027-05-15T12:00:00Z");
-const state={token:sessionStorage.getItem("eryri_session")||"",files:[],feedback:[],current:null,sha:null,dirty:false,feedbackOriginal:"",feedbackRows:[],activities:[],activitiesFetched:false,activityError:""};
+const state={token:sessionStorage.getItem("eryri_session")||"",files:[],feedback:[],current:null,sha:null,dirty:false,feedbackOriginal:"",feedbackRows:[],activities:[],activitiesFetched:false,activityError:"",sessionFeedback:{},feedbackOpen:{}};
 const show=(id,on)=>$(id).classList.toggle("hidden",!on);
 function status(message,error=false){$("status").textContent=message;$("status").classList.toggle("danger",error)}
 function weeksToGo(date){const monday=new Date(date+"T12:00:00Z");return Math.max(0,Math.ceil((race-monday)/604800000))+" weeks to go"}
@@ -65,6 +65,7 @@ async function saveSessionFeedback(){
   await api("/api/feedback",{method:"PUT",body:JSON.stringify({path,content:lines.join("\n"),sha:latest.sha})});
   area.dataset.original=next;$("session-feedback-message").textContent="Saved to GitHub.";
   if($("feedbackweek").value===path&&!state.dirty)await loadFeedback(path);
+  await renderSessions(path);
   modal.classList.add("hidden");
  }catch(e){$("session-feedback-message").textContent="Not saved: "+e.message}
  finally{modalSaving=false;$("session-feedback-save").disabled=false;$("session-feedback-close").disabled=false}
@@ -89,6 +90,16 @@ async function renderSessions(path){
    const table=lines.filter(l=>l.trimStart().startsWith("|"));
    const parseCells=l=>l.split("|").slice(1,-1).map(x=>x.trim());
    const rows=table.slice(2).map(parseCells).filter(c=>c.length>=4 && /^\d/.test(c[2]) || c.length>=4 && /^up to \d/.test(c[2]));
+   // Read saved comments once per week, without exposing them in the public page source.
+   let feedbackByDate={};
+   try{
+     const saved=await api("/api/file?path="+encodeURIComponent(path));
+     for(const row of parseFeedback(saved.content)){
+       for(const [shortDate,prefix] of Object.entries(sessionFeedbackLabels)){
+         if(row.section==="## Session comments"&&row.label.startsWith(prefix))feedbackByDate[shortDate]=row.value;
+       }
+     }
+   }catch(e){root.append(el("p",{class:"muted"},"Feedback could not be loaded: "+e.message))}
    const makeCard=(date,title,details,pack)=>{
      const card=el("article",{class:"card"});
      card.append(el("h3",{},date+" · "+title));
@@ -101,7 +112,19 @@ async function renderSessions(path){
        else card.append(el("p",{class:"muted"},"○ Awaiting activity"));
      }
 
-     if(sessionFeedbackLabels[date]){const b=el("button",{class:"secondary",type:"button"},"Enter / edit feedback");b.onclick=()=>openSessionFeedback(date);card.append(b);}
+     if(sessionFeedbackLabels[date]){
+       const feedback=feedbackByDate[date]||"";
+       const details=el("details",{class:"session-feedback-fold"});
+       if(state.feedbackOpen[path+"|"+date])details.open=true;
+       const summary=el("summary",{},feedback?"Feedback · View comments":"Feedback · No comments yet");
+       details.append(summary);
+       const content=el("p",{class:"session-feedback-copy"},feedback||"No feedback recorded for this session.");
+       details.append(content);
+       details.addEventListener("toggle",()=>{state.feedbackOpen[path+"|"+date]=details.open});
+       card.append(details);
+       const b=el("button",{class:"secondary",type:"button"},feedback?"Edit feedback":"Enter feedback");
+       b.onclick=()=>openSessionFeedback(date);card.append(b);
+     }
      root.append(card);
    };
    const sessions=rows.map(c=>({date:c[0],title:c[1],details:c[2]+" minutes",pack:c[3]}));
