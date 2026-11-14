@@ -153,9 +153,9 @@ function parseFeedback(content){
 }
 function renderFeedbackForm(content){
  const root=$("feedbackfields");root.replaceChildren();
- state.feedbackRows=parseFeedback(content);
+ state.feedbackRows=parseFeedback(content).filter(row=>row.section==="## Weekly observations");
  if(!state.feedbackRows.length){
-  root.append(el("p",{class:"muted"},"This historical week uses a different feedback format. Use Advanced: edit original Markdown below."));
+  root.append(el("p",{class:"muted"},"No weekly observations are available in this format. Use Advanced to edit the original Markdown."));
   show("advanced",true);$("advancedtoggle").textContent="Hide advanced editor";return;
  }
  let last="";
