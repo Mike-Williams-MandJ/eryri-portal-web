@@ -221,6 +221,29 @@ document.querySelectorAll("[data-tab]").forEach(b=>b.onclick=()=>tab(b.dataset.t
 $("weekselect").onchange=async e=>{const path=e.target.value,previous=state.current;if(!await loadFeedback(path)){e.target.value=previous;return}setWeek(path);await loadActivities();await renderSessions(path)};
 $("editor").oninput=()=>{state.dirty=true;$("savestatus").textContent="Unsaved changes"};
 $("reload").onclick=()=>loadFeedback($("weekselect").value);
-$("save").onclick=async()=>{const button=$("save");button.disabled=true;$("savestatus").textContent="Saving…";try{const path=$("weekselect").value;const r=await api("/api/feedback",{method:"PUT",body:JSON.stringify({path,content:collectFeedback(),sha:state.sha})});state.sha=r.sha;state.feedbackOriginal=collectFeedback();$("editor").value=state.feedbackOriginal;renderFeedbackForm(state.feedbackOriginal);state.dirty=false;$("savestatus").textContent="Saved to GitHub · "+new Date().toLocaleTimeString("en-GB");if(path===$("weekselect").value)renderSessions(path)}catch(e){$("savestatus").textContent="Not saved: "+e.message}finally{button.disabled=false}};
+$("save").onclick=async()=>{
+ const button=$("save");button.disabled=true;$("savestatus").textContent="Saving…";
+ try{
+  const path=$("weekselect").value;
+  const latest=await api("/api/file?path="+encodeURIComponent(path));
+  const latestRows=parseFeedback(latest.content);
+  const originalRows=parseFeedback(state.feedbackOriginal);
+  const lines=latest.content.split("\n");
+  for(const row of state.feedbackRows){
+   const original=originalRows.find(x=>x.label===row.label&&x.section===row.section);
+   const current=latestRows.find(x=>x.label===row.label&&x.section===row.section);
+   if(!current)throw Error("Weekly observation field no longer exists: "+row.label);
+   const next=row.area.value.trim().replace(/\r?\n/g,"; ");
+   if(current.value!==(original?.value||"")&&current.value!==next)throw Error("A weekly observation changed on another device. Reload before saving.");
+   lines[current.index]="- "+current.label+": "+(next||"**Not supplied**");
+  }
+  const content=lines.join("\n");
+  const r=await api("/api/feedback",{method:"PUT",body:JSON.stringify({path,content,sha:latest.sha})});
+  state.sha=r.sha;state.feedbackOriginal=content;$("editor").value=content;renderFeedbackForm(content);state.dirty=false;
+  $("savestatus").textContent="Saved to GitHub · "+new Date().toLocaleTimeString("en-GB");
+  await renderSessions(path);
+ }catch(e){$("savestatus").textContent="Not saved: "+e.message}
+ finally{button.disabled=false}
+};
 window.addEventListener("beforeunload",e=>{if(state.dirty){e.preventDefault();e.returnValue=""}});
 (async()=>{try{await exchangeTicket();if(state.token)await loadIndex();else status(API?"Sign in to view your private training plan.":"API not configured yet; see portal/DEPLOY.md.")}catch(e){status(e.message,true);if(e.message.includes("Unauthorized")||e.message.includes("session")){state.token="";sessionStorage.removeItem("eryri_session")}}})();
