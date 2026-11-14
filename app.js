@@ -116,7 +116,7 @@ async function renderSessions(path){
      card.append(planFold);
      if(state.activitiesFetched){
        const match=sessionActivity(date,title);
-       if(match?.status==="completed"){const a=match.activity;const distance=a.distance>0?(a.distance/1000).toFixed(2)+" km · ":"";card.append(el("p",{class:"muted"},"✓ Completed · "+a.name+" · "+distance+Math.round((a.moving_time||a.elapsed_time)/60)+" min"));}
+       if(match?.status==="completed"){const a=match.activity;const distance=a.distance>0?(a.distance/1000).toFixed(2)+" km · ":"";const fold=el("details",{class:"session-activity-fold"});const key=path+"|activity|"+date;if(state.feedbackOpen[key])fold.open=true;fold.append(el("summary",{},"✓ Completed"));fold.append(el("p",{class:"muted"},a.name+" · "+distance+Math.round((a.moving_time||a.elapsed_time)/60)+" min"));fold.addEventListener("toggle",()=>{state.feedbackOpen[key]=fold.open});card.append(fold);}
        else if(match?.status==="review")card.append(el("p",{class:"muted"},"? Activity recorded on this date — needs review"));
        else card.append(el("p",{class:"muted"},"○ Awaiting activity"));
      }
