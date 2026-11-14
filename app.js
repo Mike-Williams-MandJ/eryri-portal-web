@@ -152,6 +152,10 @@ async function renderSessions(path){
    }
    sessions.sort((a,b)=>(dayOrder[a.date.slice(0,3)]??7)-(dayOrder[b.date.slice(0,3)]??7));
    for(const session of sessions)makeCard(session.date,session.title,session.details,session.pack);
+   // Explicitly verify the final Sunday card is present for this dated week.
+   const sunday=new Date(weekStart.getTime()+6*86400000);
+   const sundayLabel="Sun "+sunday.getUTCDate()+" "+sunday.toLocaleDateString("en-GB",{month:"short",timeZone:"UTC"});
+   if(!Array.from(root.querySelectorAll("h3")).some(h=>h.textContent.startsWith(sundayLabel+" · "))){makeCard(sundayLabel,"Rest day","","");}
    if(state.activityError)root.append(el("p",{class:"muted"},"Activity sync unavailable: "+state.activityError));
    root.append(el("p",{class:"muted"},"Approved running budget: up to 175 minutes. Thursday ends at 10 km or 80 elapsed minutes, whichever comes first. The historical amendment notes an earlier Garmin deployment discrepancy; see Full plan for details."));
  }catch(e){root.append(el("p",{class:"danger"},"Could not load approved workout schedule: "+e.message))}
