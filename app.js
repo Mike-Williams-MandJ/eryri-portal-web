@@ -64,7 +64,7 @@ async function saveSessionFeedback(){
   lines[row.index]="- "+row.label+": "+(next||"**Not supplied**");
   await api("/api/feedback",{method:"PUT",body:JSON.stringify({path,content:lines.join("\n"),sha:latest.sha})});
   area.dataset.original=next;$("session-feedback-message").textContent="Saved to GitHub.";
-  if($("feedbackweek").value===path&&!state.dirty)await loadFeedback(path);
+  if($("weekselect").value===path&&!state.dirty)await loadFeedback(path);
   await renderSessions(path);
   modal.classList.add("hidden");
  }catch(e){$("session-feedback-message").textContent="Not saved: "+e.message}
@@ -73,7 +73,7 @@ async function saveSessionFeedback(){
 $("session-feedback-save").onclick=saveSessionFeedback;
 $("session-feedback-close").onclick=closeSessionFeedback;
 $("session-feedback-modal").addEventListener("click",e=>{if(e.target===$("session-feedback-modal"))closeSessionFeedback()});
-function tab(name){for(const id of ["week","plan","feedback"])show(id,id===name);document.querySelectorAll("[data-tab]").forEach(b=>b.className=b.dataset.tab===name?"primary":"secondary")}
+function tab(name){for(const id of ["week","plan"])show(id,id===name);document.querySelectorAll("[data-tab]").forEach(b=>b.className=b.dataset.tab===name?"primary":"secondary")}
 function populateSelect(select,paths){select.replaceChildren();for(const path of paths){const d=dateFromFile(path);if(!d)continue;const o=el("option",{value:path},weeksToGo(d)+" · "+humanDate(d));select.append(o)}}
 function setWeek(path){state.current=path;const d=dateFromFile(path);$("countdown").textContent=d?weeksToGo(d):"—";$("range").textContent=d?humanDate(d)+" · Monday–Sunday":"";renderSessions(path)}
 async function renderSessions(path){
@@ -103,8 +103,13 @@ async function renderSessions(path){
    const makeCard=(date,title,details,pack)=>{
      const card=el("article",{class:"card"});
      card.append(el("h3",{},date+" · "+title));
-     card.append(el("p",{},details));
-     if(pack)card.append(el("p",{class:"muted"},"Pack: "+pack));
+     const planFold=el("details",{class:"session-plan-fold"});
+     if(state.feedbackOpen[path+"|plan|"+date])planFold.open=true;
+     planFold.append(el("summary",{},"Workout details"));
+     planFold.append(el("p",{},details));
+     if(pack&&pack!=="Not applicable")planFold.append(el("p",{class:"muted"},"Pack: "+pack));
+     planFold.addEventListener("toggle",()=>{state.feedbackOpen[path+"|plan|"+date]=planFold.open});
+     card.append(planFold);
      if(state.activitiesFetched){
        const match=sessionActivity(date,title);
        if(match?.status==="completed"){const a=match.activity;const distance=a.distance>0?(a.distance/1000).toFixed(2)+" km · ":"";card.append(el("p",{class:"muted"},"✓ Completed · "+a.name+" · "+distance+Math.round((a.moving_time||a.elapsed_time)/60)+" min"));}
@@ -184,7 +189,7 @@ $("advancedtoggle").onclick=()=>{
  $("advancedtoggle").textContent=open?"Hide advanced editor":"Advanced: edit original Markdown";
 };
 async function loadFeedback(path){if(state.dirty&&!confirm("Discard unsaved feedback edits?"))return false;try{const r=await api("/api/file?path="+encodeURIComponent(path));$("editor").value=r.content;state.feedbackOriginal=r.content;show("advanced",false);$("advancedtoggle").textContent="Advanced: edit original Markdown";renderFeedbackForm(r.content);state.sha=r.sha;state.dirty=false;$("savestatus").textContent="Loaded from GitHub.";return true}catch(e){$("savestatus").textContent=e.message;return false}}
-async function loadIndex(){const r=await api("/api/index");state.files=r.files||[];state.feedback=state.files.filter(x=>/^feedback\/week\d+-\d{4}-\d{2}-\d{2}\.md$/.test(x)).sort().reverse();populateSelect($("weekselect"),state.feedback);populateSelect($("feedbackweek"),state.feedback);const documents=$("documents");documents.replaceChildren();
+async function loadIndex(){const r=await api("/api/index");state.files=r.files||[];state.feedback=state.files.filter(x=>/^feedback\/week\d+-\d{4}-\d{2}-\d{2}\.md$/.test(x)).sort().reverse();populateSelect($("weekselect"),state.feedback);const documents=$("documents");documents.replaceChildren();
 
 const schedule=el("div",{class:"card"});const scheduleTitle=el("h3",{},"Eryri 56K · training programme");const scheduleSelect=el("select",{});const scheduleDetails=el("div",{});schedule.append(scheduleTitle,scheduleSelect,scheduleDetails);documents.append(schedule);
 try{const result=await api("/api/file?path="+encodeURIComponent("plans/approved-29-week-summary-2026-10-26.md"));const rows=result.content.split("\n").filter(line=>/^\d+\|\d{4}-\d\d-\d\d\|/.test(line)).map(line=>line.split("|"));for(const r of rows){const option=el("option",{},"Week "+r[0]+" · "+r[1]+" · "+r[2]);option.value=r[0];scheduleSelect.append(option)}
@@ -206,17 +211,16 @@ for(const path of allowed){
  }catch(e){content.replaceChildren(el("p",{class:"danger"},e.message));content.classList.remove("hidden");b.textContent="Retry"}finally{b.disabled=false}};
  card.append(b,content);documents.append(card);
 }
-const today=new Date().toISOString().slice(0,10);const target=state.feedback.find(p=>dateFromFile(p)<=today)||state.feedback[0];if(target){$("weekselect").value=target;$("feedbackweek").value=target;setWeek(target);await loadFeedback(target);await loadActivities();await renderSessions(target)}show("main",true);show("signout",true);show("signin",false);status("")}
+const today=new Date().toISOString().slice(0,10);const target=state.feedback.find(p=>dateFromFile(p)<=today)||state.feedback[0];if(target){$("weekselect").value=target;await loadFeedback(target);setWeek(target);await loadActivities();await renderSessions(target)}show("main",true);show("signout",true);show("signin",false);status("")}
 async function begin(){if(!API){status("API not configured yet; see deployment guide.",true);return}location.href=API+"/auth/start"}
 async function exchangeTicket(){const fragment=new URLSearchParams(location.hash.slice(1));const ticket=fragment.get("ticket");if(!ticket)return;history.replaceState(null,"",location.pathname+location.search);const r=await fetch(API+"/auth/exchange",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({ticket})});const data=await r.json();if(!r.ok)throw Error(data.error||"Sign-in failed");state.token=data.session;sessionStorage.setItem("eryri_session",state.token)}
 $("refresh").onclick=()=>{if(state.dirty&&!confirm("Refresh the portal? Unsaved feedback changes will be lost."))return;location.reload()};
 $("signin").onclick=begin;$("signout").onclick=()=>{const token=state.token;state.token="";sessionStorage.removeItem("eryri_session");apiLogout(token);show("main",false);show("signin",true);show("signout",false);status("Signed out.")};
 async function apiLogout(token){if(API&&token)try{await fetch(API+"/auth/logout",{method:"POST",headers:{"Authorization":"Bearer "+token}})}catch{}}
 document.querySelectorAll("[data-tab]").forEach(b=>b.onclick=()=>tab(b.dataset.tab));
-$("weekselect").onchange=async e=>{setWeek(e.target.value);await loadActivities();await renderSessions(e.target.value)};
-$("feedbackweek").onchange=async e=>{const prior=$("feedbackweek").dataset.previous||state.feedback[0];if(await loadFeedback(e.target.value))$("feedbackweek").dataset.previous=e.target.value;else e.target.value=prior};
+$("weekselect").onchange=async e=>{const path=e.target.value,previous=state.current;if(!await loadFeedback(path)){e.target.value=previous;return}setWeek(path);await loadActivities();await renderSessions(path)};
 $("editor").oninput=()=>{state.dirty=true;$("savestatus").textContent="Unsaved changes"};
-$("reload").onclick=()=>loadFeedback($("feedbackweek").value);
-$("save").onclick=async()=>{const button=$("save");button.disabled=true;$("savestatus").textContent="Saving…";try{const path=$("feedbackweek").value;const r=await api("/api/feedback",{method:"PUT",body:JSON.stringify({path,content:collectFeedback(),sha:state.sha})});state.sha=r.sha;state.feedbackOriginal=collectFeedback();$("editor").value=state.feedbackOriginal;renderFeedbackForm(state.feedbackOriginal);state.dirty=false;$("savestatus").textContent="Saved to GitHub · "+new Date().toLocaleTimeString("en-GB");if(path===$("weekselect").value)renderSessions(path)}catch(e){$("savestatus").textContent="Not saved: "+e.message}finally{button.disabled=false}};
+$("reload").onclick=()=>loadFeedback($("weekselect").value);
+$("save").onclick=async()=>{const button=$("save");button.disabled=true;$("savestatus").textContent="Saving…";try{const path=$("weekselect").value;const r=await api("/api/feedback",{method:"PUT",body:JSON.stringify({path,content:collectFeedback(),sha:state.sha})});state.sha=r.sha;state.feedbackOriginal=collectFeedback();$("editor").value=state.feedbackOriginal;renderFeedbackForm(state.feedbackOriginal);state.dirty=false;$("savestatus").textContent="Saved to GitHub · "+new Date().toLocaleTimeString("en-GB");if(path===$("weekselect").value)renderSessions(path)}catch(e){$("savestatus").textContent="Not saved: "+e.message}finally{button.disabled=false}};
 window.addEventListener("beforeunload",e=>{if(state.dirty){e.preventDefault();e.returnValue=""}});
 (async()=>{try{await exchangeTicket();if(state.token)await loadIndex();else status(API?"Sign in to view your private training plan.":"API not configured yet; see portal/DEPLOY.md.")}catch(e){status(e.message,true);if(e.message.includes("Unauthorized")||e.message.includes("session")){state.token="";sessionStorage.removeItem("eryri_session")}}})();
