@@ -139,6 +139,16 @@ async function renderSessions(path){
    sessions.push({date:"Wed 11 Nov",title:"Introductory leg strength",details:"15–20 minutes · Light step-ups, calf raises, supported split squats and balance. Optional easy bouldering.",pack:"Not applicable"});
    sessions.push({date:"Fri 13 Nov",title:"Optional easy solo bouldering",details:"No two-hour session with Jo this Friday.",pack:"Not applicable"});
    const dayOrder={Mon:0,Tue:1,Wed:2,Thu:3,Fri:4,Sat:5,Sun:6};
+   // Show every calendar day, including days without a scheduled workout.
+   const weekStart=new Date(d+"T12:00:00Z");
+   const dayNames=["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
+   for(let offset=0;offset<7;offset++){
+     const day=new Date(weekStart.getTime()+offset*86400000);
+     const label=dayNames[day.getUTCDay()]+" "+day.getUTCDate()+" "+day.toLocaleDateString("en-GB",{month:"short",timeZone:"UTC"});
+     if(!sessions.some(session=>session.date===label)){
+       sessions.push({date:label,title:"Rest day",details:"No scheduled activity.",pack:""});
+     }
+   }
    sessions.sort((a,b)=>(dayOrder[a.date.slice(0,3)]??7)-(dayOrder[b.date.slice(0,3)]??7));
    for(const session of sessions)makeCard(session.date,session.title,session.details,session.pack);
    if(state.activityError)root.append(el("p",{class:"muted"},"Activity sync unavailable: "+state.activityError));
