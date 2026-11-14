@@ -129,10 +129,11 @@ async function renderSessions(path){
        details.append(summary);
        const content=el("p",{class:"session-feedback-copy"},feedback||"No feedback recorded for this session.");
        details.append(content);
+       const b=el("button",{class:"secondary",type:"button"},feedback?"Edit feedback":"Enter feedback");
+       b.onclick=()=>openSessionFeedback(date);
+       details.append(b);
        details.addEventListener("toggle",()=>{state.feedbackOpen[path+"|"+date]=details.open});
        card.append(details);
-       const b=el("button",{class:"secondary",type:"button"},feedback?"Edit feedback":"Enter feedback");
-       b.onclick=()=>openSessionFeedback(date);card.append(b);
      }
      root.append(card);
    };
