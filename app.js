@@ -82,16 +82,17 @@ async function renderSessions(path){
  const root=$("sessions");root.replaceChildren();if(!path)return;
  const d=dateFromFile(path);
 
- if(d!=="2026-11-09"){
+ if(d!=="2026-11-09"&&d!=="2026-11-16"){
    root.append(el("div",{class:"card"},"No dated approved workout schedule is available for this week in the connected repository. See Full plan for the master instructions; feedback is not a workout prescription."));
    return;
  }
  try{
-   const r=await api("/api/file?path="+encodeURIComponent("plans/week03-approved-amendments-2026-11-08.md"));
-   const lines=r.content.split("\n");
+   const isWeek4=d==="2026-11-16";
+   const r=isWeek4?null:await api("/api/file?path="+encodeURIComponent("plans/week03-approved-amendments-2026-11-08.md"));
+   const lines=isWeek4?[]:r.content.split("\n");
    const table=lines.filter(l=>l.trimStart().startsWith("|"));
    const parseCells=l=>l.split("|").slice(1,-1).map(x=>x.trim());
-   const rows=table.slice(2).map(parseCells).filter(c=>c.length>=4 && /^\d/.test(c[2]) || c.length>=4 && /^up to \d/.test(c[2]));
+   const rows=isWeek4?[["Mon 16 Nov","Easy conversational run","20",""],["Tue 17 Nov","Rolling hills","30",""],["Thu 19 Nov","Coastal run · 8 km or 60 min maximum","60",""],["Sat 21 Nov","Parkrun 5 km","30",""]]:table.slice(2).map(parseCells).filter(c=>c.length>=4 && /^\d/.test(c[2]) || c.length>=4 && /^up to \d/.test(c[2]));
    // Read saved comments once per week, without exposing them in the public page source.
    let feedbackByDate={};
    try{
@@ -138,8 +139,8 @@ async function renderSessions(path){
      root.append(card);
    };
    const sessions=rows.map(c=>({date:c[0],title:c[1],details:c[2]+" minutes",pack:c[3]}));
-   sessions.push({date:"Wed 11 Nov",title:"Introductory leg strength",details:"15–20 minutes · Light step-ups, calf raises, supported split squats and balance. Optional easy bouldering.",pack:"Not applicable"});
-   sessions.push({date:"Fri 13 Nov",title:"Optional easy solo bouldering",details:"No two-hour session with Jo this Friday.",pack:"Not applicable"});
+   sessions.push(isWeek4?{date:"Wed 18 Nov",title:"Leg strength",details:"15–20 minutes · Light leg-strength exercises, focus on technique.",pack:"Not applicable"}:{date:"Wed 11 Nov",title:"Introductory leg strength",details:"15–20 minutes · Light step-ups, calf raises, supported split squats and balance. Optional easy bouldering.",pack:"Not applicable"});
+   sessions.push(isWeek4?{date:"Fri 20 Nov",title:"Optional easy bouldering",details:"Keep this an easy optional session.",pack:"Not applicable"}:{date:"Fri 13 Nov",title:"Optional easy solo bouldering",details:"No two-hour session with Jo this Friday.",pack:"Not applicable"});
    const dayOrder={Mon:0,Tue:1,Wed:2,Thu:3,Fri:4,Sat:5,Sun:6};
    // Show every calendar day, including days without a scheduled workout.
    const weekStart=new Date(d+"T12:00:00Z");
@@ -230,7 +231,7 @@ for(const path of allowed){
  }catch(e){content.replaceChildren(el("p",{class:"danger"},e.message));content.classList.remove("hidden");b.textContent="Retry"}finally{b.disabled=false}};
  card.append(b,content);documents.append(card);
 }
-const today=new Date().toISOString().slice(0,10);const target=state.feedback.find(p=>dateFromFile(p)<=today)||state.feedback[0];if(target){$("weekselect").value=target;await loadFeedback(target);setWeek(target);await loadActivities();await renderSessions(target)}show("main",true);show("signout",true);show("signin",false);status("")}
+const today=new Intl.DateTimeFormat("en-CA",{timeZone:"Europe/London",year:"numeric",month:"2-digit",day:"2-digit"}).format(new Date());const target=state.feedback.find(p=>dateFromFile(p)<=today)||state.feedback[0];if(target){$("weekselect").value=target;await loadFeedback(target);setWeek(target);await loadActivities();await renderSessions(target)}show("main",true);show("signout",true);show("signin",false);status("")}
 async function begin(){if(!API){status("API not configured yet; see deployment guide.",true);return}location.href=API+"/auth/start"}
 async function exchangeTicket(){const fragment=new URLSearchParams(location.hash.slice(1));const ticket=fragment.get("ticket");if(!ticket)return;history.replaceState(null,"",location.pathname+location.search);const r=await fetch(API+"/auth/exchange",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({ticket})});const data=await r.json();if(!r.ok)throw Error(data.error||"Sign-in failed");state.token=data.session;sessionStorage.setItem("eryri_session",state.token)}
 $("refresh").onclick=()=>{if(state.dirty&&!confirm("Refresh the portal? Unsaved feedback changes will be lost."))return;location.reload()};
