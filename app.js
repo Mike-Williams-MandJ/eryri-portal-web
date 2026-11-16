@@ -115,18 +115,13 @@ async function renderSessions(path){
  const root=$("sessions");root.replaceChildren();if(!path)return;
  const d=dateFromFile(path);
 
- if(d!=="2026-11-09"&&d!=="2026-11-16"){
-   root.append(el("div",{class:"card"},"No dated approved workout schedule is available for this week in the connected repository. See Full plan for the master instructions; feedback is not a workout prescription."));
-   return;
- }
  try{
-   const isWeek4=d==="2026-11-16";
    const workoutData=await weeklyWorkoutData(d);
-   const r=isWeek4?null:await api("/api/file?path="+encodeURIComponent("plans/week03-approved-amendments-2026-11-08.md"));
-   const lines=isWeek4?[]:r.content.split("\n");
-   const table=lines.filter(l=>l.trimStart().startsWith("|"));
-   const parseCells=l=>l.split("|").slice(1,-1).map(x=>x.trim());
-   const rows=isWeek4?[["Mon 16 Nov","Easy conversational run","20",""],["Tue 17 Nov","Rolling hills","30",""],["Thu 19 Nov","Coastal run · 8 km or 60 min maximum","60",""],["Sat 21 Nov","Parkrun 5 km","30",""]]:table.slice(2).map(parseCells).filter(c=>c.length>=4 && /^\d/.test(c[2]) || c.length>=4 && /^up to \d/.test(c[2]));
+   const schedule=workoutData.strength?.schedule;
+   if(!Array.isArray(schedule)||workoutData.strength.start_date!==d){
+     root.append(el("div",{class:"card"},"No approved dated workout schedule is available for this week in GitHub. See Full plan for the master instructions."));
+     return;
+   }
    // Read saved comments once per week, without exposing them in the public page source.
    let feedbackByDate={};
    try{
@@ -138,24 +133,15 @@ async function renderSessions(path){
      }
    }catch(e){root.append(el("p",{class:"muted"},"Feedback could not be loaded: "+e.message))}
    if(renderId!==sessionsRenderId)return;
-   const makeCard=(date,title,details,pack)=>{
+   const makeCard=(date,title,details,pack,session={})=>{
      const card=el("article",{class:"card"});
      card.append(el("h3",{},date+" · "+title));
      if(title==="Rest day"){root.append(card);return;}
      const planFold=el("details",{class:"session-plan-fold"});
      if(state.feedbackOpen[path+"|plan|"+date])planFold.open=true;
      planFold.append(el("summary",{},"Workout details"));
-     const garmin=findGarminWorkout(workoutData.garmin,date,title);
-     const strength=workoutData.strength?.sessions?.[date]||(isWeek4&&date==="Wed 18 Nov"?{
- name:"Introductory leg strength",duration:"15–20 min total",
- steps:[
- {name:"Step-ups",instruction:"Light, technique-focused step-ups; prioritise correct form."},
- {name:"Calf raises",instruction:"Light calf raises; prioritise correct form."},
- {name:"Supported split squats",instruction:"Use support and prioritise correct form."},
- {name:"Balance",instruction:"Light balance practice with correct technique."}
- ],
- note:"The approved plan specifies exercises and total duration, but not sets or repetitions."
-}:null);
+     const garmin=session.kind==="run"&&session.workout_key?workoutData.garmin?.workouts?.[session.workout_key]:null;
+     const strength=session.kind==="strength"?workoutData.strength?.sessions?.[session.strength_key||date]:null;
      if(garmin){
        planFold.append(el("p",{class:"muted"},"Garmin workout: "+garmin.workoutName));
        const steps=el("ol",{class:"workout-steps"});
@@ -203,9 +189,11 @@ async function renderSessions(path){
      }
      root.append(card);
    };
-   const sessions=rows.map(c=>({date:c[0],title:c[1],details:c[2]+" minutes",pack:c[3]}));
-   sessions.push(isWeek4?{date:"Wed 18 Nov",title:"Leg strength",details:"15–20 minutes · Light leg-strength exercises, focus on technique.",pack:"Not applicable"}:{date:"Wed 11 Nov",title:"Introductory leg strength",details:"15–20 minutes · Light step-ups, calf raises, supported split squats and balance. Optional easy bouldering.",pack:"Not applicable"});
-   sessions.push(isWeek4?{date:"Fri 20 Nov",title:"Optional easy bouldering",details:"Keep this an easy optional session.",pack:"Not applicable"}:{date:"Fri 13 Nov",title:"Optional easy solo bouldering",details:"No two-hour session with Jo this Friday.",pack:"Not applicable"});
+   const sessions=schedule.map(s=>{
+     const dt=new Date(s.date+"T12:00:00Z");
+     const label=dt.toLocaleDateString("en-GB",{weekday:"short",day:"numeric",month:"short",timeZone:"UTC"});
+     return {...s,date:label,details:s.details||"",pack:s.pack||""};
+   });
    const dayOrder={Mon:0,Tue:1,Wed:2,Thu:3,Fri:4,Sat:5,Sun:6};
    // Show every calendar day, including days without a scheduled workout.
    const weekStart=new Date(d+"T12:00:00Z");
@@ -214,17 +202,17 @@ async function renderSessions(path){
      const day=new Date(weekStart.getTime()+offset*86400000);
      const label=dayNames[day.getUTCDay()]+" "+day.getUTCDate()+" "+day.toLocaleDateString("en-GB",{month:"short",timeZone:"UTC"});
      if(!sessions.some(session=>session.date===label)){
-       sessions.push({date:label,title:"Rest day",details:"No scheduled activity.",pack:""});
+       sessions.push({date:label,title:"Rest day",kind:"rest",details:"No scheduled activity.",pack:""});
      }
    }
    sessions.sort((a,b)=>(dayOrder[a.date.slice(0,3)]??7)-(dayOrder[b.date.slice(0,3)]??7));
-   for(const session of sessions)makeCard(session.date,session.title,session.details,session.pack);
+   for(const session of sessions)makeCard(session.date,session.title,session.details,session.pack,session);
    // Explicitly verify the final Sunday card is present for this dated week.
    const sunday=new Date(weekStart.getTime()+6*86400000);
    const sundayLabel="Sun "+sunday.getUTCDate()+" "+sunday.toLocaleDateString("en-GB",{month:"short",timeZone:"UTC"});
    if(!Array.from(root.querySelectorAll("h3")).some(h=>h.textContent.startsWith(sundayLabel+" · "))){makeCard(sundayLabel,"Rest day","","");}
    if(state.activityError)root.append(el("p",{class:"muted"},"Activity sync unavailable: "+state.activityError));
-   root.append(el("p",{class:"muted"},"Approved running budget: up to 175 minutes. Thursday ends at 10 km or 80 elapsed minutes, whichever comes first. The historical amendment notes an earlier Garmin deployment discrepancy; see Full plan for details."));
+   if(workoutData.strength.week_note)root.append(el("p",{class:"muted"},workoutData.strength.week_note));
  }catch(e){root.append(el("p",{class:"danger"},"Could not load approved workout schedule: "+e.message))}
 }
 
