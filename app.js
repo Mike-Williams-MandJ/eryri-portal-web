@@ -84,6 +84,12 @@ function tab(name){for(const id of ["week","plan"])show(id,id===name);document.q
 function populateSelect(select,paths){select.replaceChildren();for(const path of paths){const d=dateFromFile(path);if(!d)continue;const o=el("option",{value:path},weeksToGo(d)+" · "+humanDate(d));select.append(o)}}
 function setWeek(path){state.current=path}
 let sessionsRenderId=0;
+const week4GarminSteps={
+ "Mon 16 Nov":{name:"Eryri 26w Easy 20m",steps:[["Warm-up","5 min","Start gently."],["Easy run","10 min","Easy conversational run; walk if needed."],["Cool-down","5 min","Finish gently."]]},
+ "Tue 17 Nov":{name:"Eryri 26w Gentle hills 30m",steps:[["Warm-up","5 min","Easy warm-up."],["Rolling hills","20 min","Gentle rolling hills; walk steep sections."],["Cool-down","5 min","Easy cool-down."]]},
+ "Thu 19 Nov":{name:"Eryri 26w Coast 8km or 60m",steps:[["Warm-up","5 min","Start gently."],["Coastal run / hike","50 min","Easy coast run or hike. End manually at 8 km OR 60 elapsed minutes, whichever comes first."],["Cool-down","5 min","Finish gently only if still within both caps."]]},
+ "Sat 21 Nov":{name:"Eryri 26w Parkrun fixed 5km",steps:[["Parkrun","5 km","Controlled effort; aim for sub-30 minutes if recovered. No programmed warm-up or cool-down."]]}
+};
 async function renderSessions(path){
  const renderId=++sessionsRenderId;
  const root=$("sessions");root.replaceChildren();if(!path)return;
@@ -118,7 +124,17 @@ async function renderSessions(path){
      const planFold=el("details",{class:"session-plan-fold"});
      if(state.feedbackOpen[path+"|plan|"+date])planFold.open=true;
      planFold.append(el("summary",{},"Workout details"));
-     planFold.append(el("p",{},details));
+     const garmin=isWeek4?week4GarminSteps[date]:null;
+     if(garmin){
+       planFold.append(el("p",{class:"muted"},"Garmin workout: "+garmin.name));
+       const steps=el("ol",{class:"workout-steps"});
+       for(const [name,duration,instruction] of garmin.steps){
+         const item=el("li",{});
+         item.append(el("strong",{},name+" · "+duration),el("p",{},instruction));
+         steps.append(item);
+       }
+       planFold.append(steps);
+     }else planFold.append(el("p",{},details));
      if(pack&&pack!=="Not applicable")planFold.append(el("p",{class:"muted"},"Pack: "+pack));
      planFold.addEventListener("toggle",()=>{state.feedbackOpen[path+"|plan|"+date]=planFold.open});
      card.append(planFold);
