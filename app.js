@@ -261,7 +261,7 @@ $("refresh").onclick=async()=>{
    }
    await loadActivities();
    await renderSessions(state.current);
-   status(synced?"Activities updated from GitHub.":"Sync is still running. Try Refresh again shortly.");
+   status(synced?"":"Sync is still running. Try Refresh again shortly.");
  }catch(e){status("Activity sync could not start: "+e.message,true)}
  finally{button.disabled=false;button.title=original}
 };
