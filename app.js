@@ -14,7 +14,7 @@ async function loadActivities(){
  const start=dateFromFile($("weekselect").value);
  if(!start)return;
  const oldest=start,newest=new Date(new Date(start+"T12:00:00Z").getTime()+6*86400000).toISOString().slice(0,10);
- try{const r=await api("/api/activities?oldest="+oldest+"&newest="+newest);state.activities=r.activities||[];state.activitiesFetched=true;state.activityError="";}
+ try{const r=await api("/api/file?path="+encodeURIComponent("data/portal-activities.json"));const snapshot=JSON.parse(r.content);state.activities=(snapshot.activities||[]).filter(a=>a.date>=oldest&&a.date<=newest);state.activitiesFetched=true;state.activityError="";}
  catch(e){state.activities=[];state.activitiesFetched=false;state.activityError=e.message;}
 }
 function sessionActivity(date,title){
