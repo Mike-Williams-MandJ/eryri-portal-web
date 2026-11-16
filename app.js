@@ -234,7 +234,30 @@ for(const path of allowed){
 const today=new Intl.DateTimeFormat("sv-SE",{timeZone:"Europe/London",year:"numeric",month:"2-digit",day:"2-digit"}).format(new Date());const target=state.feedback.find(p=>dateFromFile(p)<=today)||state.feedback[0];if(target){$("weekselect").value=target;await loadFeedback(target);setWeek(target);await loadActivities();await renderSessions(target)}show("main",true);show("signout",true);show("signin",false);status("")}
 async function begin(){if(!API){status("API not configured yet; see deployment guide.",true);return}location.href=API+"/auth/start"}
 async function exchangeTicket(){const fragment=new URLSearchParams(location.hash.slice(1));const ticket=fragment.get("ticket");if(!ticket)return;history.replaceState(null,"",location.pathname+location.search);const r=await fetch(API+"/auth/exchange",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({ticket})});const data=await r.json();if(!r.ok)throw Error(data.error||"Sign-in failed");state.token=data.session;sessionStorage.setItem("eryri_session",state.token)}
-$("refresh").onclick=()=>{if(state.dirty&&!confirm("Refresh the portal? Unsaved feedback changes will be lost."))return;location.reload()};
+$("refresh").onclick=async()=>{
+ const button=$("refresh");
+ if(button.disabled)return;
+ button.disabled=true;
+ const original=button.title;
+ button.title="Syncing activities from Intervals.icu…";
+ try{
+   const before=await api("/api/file?path="+encodeURIComponent("data/portal-activities.json"));
+   const previous=JSON.parse(before.content).updated_at||"";
+   await api("/api/sync-activities",{method:"POST",body:"{}"});
+   status("Activity sync requested. Waiting for GitHub Actions…");
+   let synced=false;
+   for(let attempt=0;attempt<24;attempt++){
+     await new Promise(resolve=>setTimeout(resolve,5000));
+     const latest=await api("/api/file?path="+encodeURIComponent("data/portal-activities.json"));
+     const updated=JSON.parse(latest.content).updated_at||"";
+     if(updated&&updated!==previous){synced=true;break}
+   }
+   await loadActivities();
+   await renderSessions(state.current);
+   status(synced?"Activities updated from GitHub.":"Sync is still running. Try Refresh again shortly.");
+ }catch(e){status("Activity sync could not start: "+e.message,true)}
+ finally{button.disabled=false;button.title=original}
+};
 $("signin").onclick=begin;$("signout").onclick=()=>{const token=state.token;state.token="";sessionStorage.removeItem("eryri_session");apiLogout(token);show("main",false);show("signin",true);show("signout",false);status("Signed out.")};
 async function apiLogout(token){if(API&&token)try{await fetch(API+"/auth/logout",{method:"POST",headers:{"Authorization":"Bearer "+token}})}catch{}}
 document.querySelectorAll("[data-tab]").forEach(b=>b.onclick=()=>tab(b.dataset.tab));
