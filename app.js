@@ -84,12 +84,32 @@ function tab(name){for(const id of ["week","plan"])show(id,id===name);document.q
 function populateSelect(select,paths){select.replaceChildren();for(const path of paths){const d=dateFromFile(path);if(!d)continue;const o=el("option",{value:path},weeksToGo(d)+" · "+humanDate(d));select.append(o)}}
 function setWeek(path){state.current=path}
 let sessionsRenderId=0;
-const week4GarminSteps={
- "Mon 16 Nov":{name:"Eryri 26w Easy 20m",steps:[["Warm-up","5 min","Start gently."],["Easy run","10 min","Easy conversational run; walk if needed."],["Cool-down","5 min","Finish gently."]]},
- "Tue 17 Nov":{name:"Eryri 26w Gentle hills 30m",steps:[["Warm-up","5 min","Easy warm-up."],["Rolling hills","20 min","Gentle rolling hills; walk steep sections."],["Cool-down","5 min","Easy cool-down."]]},
- "Thu 19 Nov":{name:"Eryri 26w Coast 8km or 60m",steps:[["Warm-up","5 min","Start gently."],["Coastal run / hike","50 min","Easy coast run or hike. End manually at 8 km OR 60 elapsed minutes, whichever comes first."],["Cool-down","5 min","Finish gently only if still within both caps."]]},
- "Sat 21 Nov":{name:"Eryri 26w Parkrun fixed 5km",steps:[["Parkrun","5 km","Controlled effort; aim for sub-30 minutes if recovered. No programmed warm-up or cool-down."]]}
-};
+function workoutWeekId(date){const first=new Date("2026-10-26T12:00:00Z");const day=new Date(date+"T12:00:00Z");return String(Math.round((day-first)/604800000)+1).padStart(2,"0")}
+function formatStepEnd(step){
+ const kind=step.endCondition?.conditionTypeKey;
+ const value=Number(step.endConditionValue);
+ if(kind==="time")return value%60===0?(value/60)+" min":value+" sec";
+ if(kind==="distance")return value>=1000?(value/1000)+" km":value+" m";
+ if(kind==="lap.button")return "until LAP";
+ return kind==="iterations"?value+" repeats":kind||"";
+}
+function cleanInstruction(value){return String(value||"").replace(/\\bRPE\\s*\\d+(?:\\s*[-–]\\s*\\d+)?[;,.]?\\s*/gi,"").trim()}
+async function weeklyWorkoutData(date){
+ const id=workoutWeekId(date);
+ const get=async kind=>{try{const r=await api("/api/file?path="+encodeURIComponent("automation/"+kind+"/week"+id+".json"));return JSON.parse(r.content)}catch(e){return null}};
+ const [garmin,strength]=await Promise.all([get("garmin"),get("strength")]);
+ return {garmin,strength};
+}
+function findGarminWorkout(data,date,title){
+ if(!data?.workouts)return null;
+ const day=date.slice(0,3);
+ const lookup={"2026-11-09":{Mon:"EASY20",Tue:"ROLL35",Thu:"COAST10T80",Sat:"EASY30"},"2026-11-16":{Mon:"EASY20",Tue:"ROLL30",Thu:"COAST8T60",Sat:"PARKRUN5K"}};
+ const key=lookup[data.week===3?"2026-11-09":data.week===4?"2026-11-16":""]?.[day];
+ if(key)return data.workouts[key]||null;
+ const candidates=Object.entries(data.workouts);
+ const match=candidates.filter(([k,w])=>day==="Mon"?/easy/i.test(k):day==="Tue"?/roll|hill/i.test(k):day==="Thu"?/coast|long/i.test(k):day==="Sat"?/park|5k/i.test(k):false);
+ return match.length===1?match[0][1]:null;
+}
 async function renderSessions(path){
  const renderId=++sessionsRenderId;
  const root=$("sessions");root.replaceChildren();if(!path)return;
@@ -101,6 +121,7 @@ async function renderSessions(path){
  }
  try{
    const isWeek4=d==="2026-11-16";
+   const workoutData=await weeklyWorkoutData(d);
    const r=isWeek4?null:await api("/api/file?path="+encodeURIComponent("plans/week03-approved-amendments-2026-11-08.md"));
    const lines=isWeek4?[]:r.content.split("\n");
    const table=lines.filter(l=>l.trimStart().startsWith("|"));
@@ -124,16 +145,28 @@ async function renderSessions(path){
      const planFold=el("details",{class:"session-plan-fold"});
      if(state.feedbackOpen[path+"|plan|"+date])planFold.open=true;
      planFold.append(el("summary",{},"Workout details"));
-     const garmin=isWeek4?week4GarminSteps[date]:null;
+     const garmin=findGarminWorkout(workoutData.garmin,date,title);
+     const strength=workoutData.strength?.sessions?.[date];
      if(garmin){
-       planFold.append(el("p",{class:"muted"},"Garmin workout: "+garmin.name));
+       planFold.append(el("p",{class:"muted"},"Garmin workout: "+garmin.workoutName));
        const steps=el("ol",{class:"workout-steps"});
-       for(const [name,duration,instruction] of garmin.steps){
-         const item=el("li",{});
-         item.append(el("strong",{},name+" · "+duration),el("p",{},instruction));
-         steps.append(item);
+       for(const segment of garmin.workoutSegments||[]){
+         for(const step of segment.workoutSteps||[]){
+           const name=step.stepType?.stepTypeKey||"Step";
+           const duration=formatStepEnd(step);
+           const item=el("li",{});
+           item.append(el("strong",{},name.charAt(0).toUpperCase()+name.slice(1)+(duration?" · "+duration:"")));
+           if(step.description)item.append(el("p",{},cleanInstruction(step.description)));
+           steps.append(item);
+         }
        }
        planFold.append(steps);
+     }else if(strength){
+       planFold.append(el("p",{class:"muted"},strength.name+" · "+strength.duration));
+       const steps=el("ol",{class:"workout-steps"});
+       for(const step of strength.steps||[]){const item=el("li",{});item.append(el("strong",{},step.name),el("p",{},step.instruction));steps.append(item)}
+       planFold.append(steps);
+       if(strength.note)planFold.append(el("p",{class:"muted"},strength.note));
      }else planFold.append(el("p",{},details));
      if(pack&&pack!=="Not applicable")planFold.append(el("p",{class:"muted"},"Pack: "+pack));
      planFold.addEventListener("toggle",()=>{state.feedbackOpen[path+"|plan|"+date]=planFold.open});
