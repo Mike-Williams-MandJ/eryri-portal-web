@@ -174,6 +174,7 @@ async function renderSessions(path){
      if(pack&&pack!=="Not applicable")planFold.append(el("p",{class:"muted"},"Pack: "+pack));
      planFold.addEventListener("toggle",()=>{state.feedbackOpen[path+"|plan|"+date]=planFold.open});
      card.append(planFold);
+     }
      if(state.activitiesFetched){
        const dayKey=activityDateKey(date,d);
        const same=state.activities.filter(a=>a.date===dayKey);
@@ -205,7 +206,6 @@ async function renderSessions(path){
        }
      }
 
-     }
      if(sessionFeedbackLabels[date]){
        const feedback=feedbackByDate[date]||"";
        const details=el("details",{class:"session-feedback-fold"});
