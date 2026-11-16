@@ -134,7 +134,7 @@ async function renderSessions(path){
      const saved=await api("/api/file?path="+encodeURIComponent(path));
      for(const row of parseFeedback(saved.content)){
        if(row.section==="## Session comments"){
-         const matched=row.label.match(/^(Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday) (\\d{1,2}) (\\w+)/);
+         const matched=row.label.match(/^(Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday) (\d{1,2}) (\w+)/);
          if(matched){
            const shortDay=matched[1].slice(0,3);
            const shortMonth=matched[3].slice(0,3);
