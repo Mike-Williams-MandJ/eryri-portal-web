@@ -25,7 +25,7 @@ async function loadActivities(){
  catch(e){state.activities=[];state.activitiesFetched=false;state.activityError=e.message;}
 }
 function activityDateKey(label,weekStart){
- const day=Number(label.match(/\\b(\\d{1,2})\\b/)?.[1]);
+ const day=Number(label.match(/\b(\d{1,2})\b/)?.[1]);
  if(!day)return null;
  const start=new Date(weekStart+"T12:00:00Z");
  for(let i=0;i<7;i++){const date=new Date(start.getTime()+i*86400000);if(date.getUTCDate()===day)return date.toISOString().slice(0,10)}
