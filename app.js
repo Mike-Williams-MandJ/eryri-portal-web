@@ -43,17 +43,15 @@ function activitySummary(activity){
  const secs=Number(activity.moving_time||activity.elapsed_time)||0;
  return activity.name+" · "+km+Math.round(secs/60)+" min";
 }
-const sessionFeedbackLabels={
- "Mon 9 Nov":"Monday 9 November",
- "Tue 10 Nov":"Tuesday 10 November",
- "Wed 11 Nov":"Wednesday 11 November",
- "Thu 12 Nov":"Thursday 12 November",
- "Sat 14 Nov":"Saturday 14 November"
-};
+function sessionFeedbackPrefix(label,weekStart){
+ const iso=activityDateKey(label,weekStart);
+ if(!iso)return null;
+ return new Date(iso+"T12:00:00Z").toLocaleDateString("en-GB",{weekday:"long",day:"numeric",month:"long",timeZone:"UTC"});
+}
 let modalSaving=false;
 function closeSessionFeedback(){if(modalSaving)return;if($("session-feedback-text").value!==$("session-feedback-text").dataset.original&&!confirm("Discard unsaved session feedback?"))return;$("session-feedback-modal").classList.add("hidden");$("session-feedback-text").value="";$("session-feedback-message").textContent="";}
 async function openSessionFeedback(date){
- const path=$("weekselect").value, prefix=sessionFeedbackLabels[date];
+ const path=$("weekselect").value, prefix=sessionFeedbackPrefix(date,dateFromFile(path));
  if(!prefix)return;
  const modal=$("session-feedback-modal"),area=$("session-feedback-text"),save=$("session-feedback-save");
  modal.classList.remove("hidden");$("session-feedback-title").textContent=date+" · Feedback";$("session-feedback-message").textContent="Loading saved feedback…";area.disabled=true;save.disabled=true;modal.dataset.path=path;modal.dataset.prefix=prefix;
@@ -135,8 +133,13 @@ async function renderSessions(path){
    try{
      const saved=await api("/api/file?path="+encodeURIComponent(path));
      for(const row of parseFeedback(saved.content)){
-       for(const [shortDate,prefix] of Object.entries(sessionFeedbackLabels)){
-         if(row.section==="## Session comments"&&row.label.startsWith(prefix))feedbackByDate[shortDate]=row.value;
+       if(row.section==="## Session comments"){
+         const matched=row.label.match(/^(Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday) (\\d{1,2}) (\\w+)/);
+         if(matched){
+           const shortDay=matched[1].slice(0,3);
+           const shortMonth=matched[3].slice(0,3);
+           feedbackByDate[shortDay+" "+Number(matched[2])+" "+shortMonth]=row.value;
+         }
        }
      }
    }catch(e){root.append(el("p",{class:"muted"},"Feedback could not be loaded: "+e.message))}
@@ -206,7 +209,7 @@ async function renderSessions(path){
        }
      }
 
-     if(sessionFeedbackLabels[date]){
+     if(sessionFeedbackPrefix(date,d)){
        const feedback=feedbackByDate[date]||"";
        const details=el("details",{class:"session-feedback-fold"});
        if(state.feedbackOpen[path+"|"+date])details.open=true;
