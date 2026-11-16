@@ -146,7 +146,16 @@ async function renderSessions(path){
      if(state.feedbackOpen[path+"|plan|"+date])planFold.open=true;
      planFold.append(el("summary",{},"Workout details"));
      const garmin=findGarminWorkout(workoutData.garmin,date,title);
-     const strength=workoutData.strength?.sessions?.[date];
+     const strength=workoutData.strength?.sessions?.[date]||(isWeek4&&date==="Wed 18 Nov"?{
+ name:"Introductory leg strength",duration:"15–20 min total",
+ steps:[
+ {name:"Step-ups",instruction:"Light, technique-focused step-ups; prioritise correct form."},
+ {name:"Calf raises",instruction:"Light calf raises; prioritise correct form."},
+ {name:"Supported split squats",instruction:"Use support and prioritise correct form."},
+ {name:"Balance",instruction:"Light balance practice with correct technique."}
+ ],
+ note:"The approved plan specifies exercises and total duration, but not sets or repetitions."
+}:null);
      if(garmin){
        planFold.append(el("p",{class:"muted"},"Garmin workout: "+garmin.workoutName));
        const steps=el("ol",{class:"workout-steps"});
