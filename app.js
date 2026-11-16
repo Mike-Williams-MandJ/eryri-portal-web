@@ -213,7 +213,7 @@ async function renderSessions(path){
        const feedback=feedbackByDate[date]||"";
        const details=el("details",{class:"session-feedback-fold"});
        if(state.feedbackOpen[path+"|"+date])details.open=true;
-       const summary=el("summary",{},feedback?"Feedback · View comments":"Feedback · No comments yet");
+       const summary=el("summary",{},feedback?"View feedback":"No feedback yet");
        details.append(summary);
        const content=el("p",{class:"session-feedback-copy"},feedback.replace(/\\n/g,"\n")||"No feedback recorded for this session.");
        details.append(content);
