@@ -10,11 +10,18 @@ function dateFromFile(path){return path.match(/week\d+-(\d{4}-\d{2}-\d{2})\.md$/
 function humanDate(s){return new Date(s+"T12:00:00Z").toLocaleDateString("en-GB",{day:"numeric",month:"short",year:"numeric",timeZone:"UTC"})}
 function el(tag,attrs={},text){const e=document.createElement(tag);for(const [k,v] of Object.entries(attrs)){if(k==="class")e.className=v;else e.setAttribute(k,v)}if(text!==undefined)e.textContent=text;return e}
 async function api(path,options={}){if(!API)throw Error("API URL not configured. Follow portal/DEPLOY.md.");const res=await fetch(API+path,{...options,headers:{"Authorization":"Bearer "+state.token,...(options.body?{"Content-Type":"application/json"}:{}),...(options.headers||{})},cache:"no-store"});const data=await res.json().catch(()=>({}));if(!res.ok)throw Error(data.error||"Request failed ("+res.status+")");return data}
+function showLastSync(value){
+ const node=$("last-sync");
+ if(!node)return;
+ const time=new Date(value||"");
+ if(!value||Number.isNaN(time.getTime())){node.textContent="Last activity sync: unknown";return}
+ node.textContent="Last activity sync: "+time.toLocaleString("en-GB",{timeZone:"Europe/London",day:"numeric",month:"short",hour:"2-digit",minute:"2-digit",hour12:false})+" (UK)";
+}
 async function loadActivities(){
  const start=dateFromFile($("weekselect").value);
  if(!start)return;
  const oldest=start,newest=new Date(new Date(start+"T12:00:00Z").getTime()+6*86400000).toISOString().slice(0,10);
- try{const r=await api("/api/file?path="+encodeURIComponent("data/portal-activities.json"));const snapshot=JSON.parse(r.content);state.activities=(snapshot.activities||[]).filter(a=>a.date>=oldest&&a.date<=newest);state.activitiesFetched=true;state.activityError="";}
+ try{const r=await api("/api/file?path="+encodeURIComponent("data/portal-activities.json"));const snapshot=JSON.parse(r.content);showLastSync(snapshot.updated_at);state.activities=(snapshot.activities||[]).filter(a=>a.date>=oldest&&a.date<=newest);state.activitiesFetched=true;state.activityError="";}
  catch(e){state.activities=[];state.activitiesFetched=false;state.activityError=e.message;}
 }
 function sessionActivity(date,title){
