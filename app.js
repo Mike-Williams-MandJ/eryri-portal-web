@@ -24,16 +24,24 @@ async function loadActivities(){
  try{const r=await api("/api/file?path="+encodeURIComponent("data/portal-activities.json"));const snapshot=JSON.parse(r.content);showLastSync(snapshot.updated_at);state.activities=(snapshot.activities||[]).filter(a=>a.date>=oldest&&a.date<=newest);state.activitiesFetched=true;state.activityError="";}
  catch(e){state.activities=[];state.activitiesFetched=false;state.activityError=e.message;}
 }
-function sessionActivity(date,title){
- const m=date.match(/^(Mon|Tue|Wed|Thu|Fri|Sat|Sun) (\d+) Nov$/);
- if(!m)return null;
- const dateKey="2026-11-"+m[2].padStart(2,"0");
- const same=state.activities.filter(a=>a.date===dateKey);
- const isRun=!/strength|bouldering/i.test(title);
- const candidates=same.filter(a=>isRun?/^(run|trailrun|virtualrun|treadmill)$/i.test(a.type):/strength/i.test(title)?/strength|weight/i.test(a.type):/climb|boulder/i.test(a.type));
- if(candidates.length===1)return {status:"completed",activity:candidates[0]};
- if(candidates.length>1||same.length)return {status:"review",activity:null};
- return {status:"awaiting",activity:null};
+function activityDateKey(label,weekStart){
+ const day=Number(label.match(/\\b(\\d{1,2})\\b/)?.[1]);
+ if(!day)return null;
+ const start=new Date(weekStart+"T12:00:00Z");
+ for(let i=0;i<7;i++){const date=new Date(start.getTime()+i*86400000);if(date.getUTCDate()===day)return date.toISOString().slice(0,10)}
+ return null;
+}
+function activityCategory(activity){
+ const type=String(activity.type||"").toLowerCase(),name=String(activity.name||"").toLowerCase();
+ if(/^(run|trailrun|virtualrun|treadmill)$/.test(type))return "run";
+ if(/strength|weight/.test(type))return "strength";
+ if(/climb|boulder/.test(type)||type==="workout"&&(/cardio|climb|boulder/.test(name)||!name.trim()))return "bouldering";
+ return "other";
+}
+function activitySummary(activity){
+ const km=Number(activity.distance)>0?(Number(activity.distance)/1000).toFixed(2)+" km · ":"";
+ const secs=Number(activity.moving_time||activity.elapsed_time)||0;
+ return activity.name+" · "+km+Math.round(secs/60)+" min";
 }
 const sessionFeedbackLabels={
  "Mon 9 Nov":"Monday 9 November",
@@ -136,7 +144,7 @@ async function renderSessions(path){
    const makeCard=(date,title,details,pack,session={})=>{
      const card=el("article",{class:"card"});
      card.append(el("h3",{},date+" · "+title));
-     if(title==="Rest day"){root.append(card);return;}
+     if(title==="Rest day"){card.append(el("p",{class:"muted"},"No scheduled workout."));}else{
      const planFold=el("details",{class:"session-plan-fold"});
      if(state.feedbackOpen[path+"|plan|"+date])planFold.open=true;
      planFold.append(el("summary",{},"Workout details"));
@@ -167,12 +175,37 @@ async function renderSessions(path){
      planFold.addEventListener("toggle",()=>{state.feedbackOpen[path+"|plan|"+date]=planFold.open});
      card.append(planFold);
      if(state.activitiesFetched){
-       const match=sessionActivity(date,title);
-       if(match?.status==="completed"){const a=match.activity;const distance=a.distance>0?(a.distance/1000).toFixed(2)+" km · ":"";const fold=el("details",{class:"session-activity-fold"});const key=path+"|activity|"+date;if(state.feedbackOpen[key])fold.open=true;fold.append(el("summary",{},"✓ Completed"));fold.append(el("p",{class:"muted"},a.name+" · "+distance+Math.round((a.moving_time||a.elapsed_time)/60)+" min"));fold.addEventListener("toggle",()=>{state.feedbackOpen[key]=fold.open});card.append(fold);}
-       else if(match?.status==="review")card.append(el("p",{class:"muted"},"? Activity recorded on this date — needs review"));
-       else card.append(el("p",{class:"muted"},"○ Awaiting activity"));
+       const dayKey=activityDateKey(date,d);
+       const same=state.activities.filter(a=>a.date===dayKey);
+       const expected=session.kind==="run"?"run":session.kind==="strength"?"strength":session.kind==="other"&&/boulder/i.test(title)?"bouldering":null;
+       const matching=expected?same.filter(a=>activityCategory(a)===expected):[];
+       if(matching.length){
+         for(const activity of matching){
+           const fold=el("details",{class:"session-activity-fold"});
+           const key=path+"|activity|"+date+"|"+activity.id;
+           if(state.feedbackOpen[key])fold.open=true;
+           fold.append(el("summary",{},"✓ Completed"+(matching.length>1?" · "+activity.name:"")));
+           fold.append(el("p",{class:"muted"},activitySummary(activity)));
+           fold.addEventListener("toggle",()=>{state.feedbackOpen[key]=fold.open});
+           card.append(fold);
+         }
+       }else if(expected)card.append(el("p",{class:"muted"},"○ Awaiting "+(expected==="run"?"planned run":expected==="strength"?"strength session":"bouldering activity")));
+       for(const activity of same){
+         if(expected&&activityCategory(activity)===expected)continue;
+         const category=activityCategory(activity);
+         // Show each additional activity once, on the day's first scheduled card.
+         if(!session.firstForDay)continue;
+         const fold=el("details",{class:"session-activity-fold"});
+         const key=path+"|extra|"+activity.id;
+         if(state.feedbackOpen[key])fold.open=true;
+         fold.append(el("summary",{},"✓ Additional activity · "+(category==="bouldering"?"Bouldering":category==="run"?"Running":category==="strength"?"Strength training":activity.name)));
+         fold.append(el("p",{class:"muted"},activitySummary(activity)));
+         fold.addEventListener("toggle",()=>{state.feedbackOpen[key]=fold.open});
+         card.append(fold);
+       }
      }
 
+     }
      if(sessionFeedbackLabels[date]){
        const feedback=feedbackByDate[date]||"";
        const details=el("details",{class:"session-feedback-fold"});
@@ -206,7 +239,12 @@ async function renderSessions(path){
      }
    }
    sessions.sort((a,b)=>(dayOrder[a.date.slice(0,3)]??7)-(dayOrder[b.date.slice(0,3)]??7));
-   for(const session of sessions)makeCard(session.date,session.title,session.details,session.pack,session);
+   const seenDays=new Set();
+   for(const session of sessions){
+     session.firstForDay=!seenDays.has(session.date);
+     seenDays.add(session.date);
+     makeCard(session.date,session.title,session.details,session.pack,session);
+   }
    // Explicitly verify the final Sunday card is present for this dated week.
    const sunday=new Date(weekStart.getTime()+6*86400000);
    const sundayLabel="Sun "+sunday.getUTCDate()+" "+sunday.toLocaleDateString("en-GB",{month:"short",timeZone:"UTC"});
