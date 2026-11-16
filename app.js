@@ -60,7 +60,7 @@ async function openSessionFeedback(date){
   if(modal.dataset.path!==path||modal.classList.contains("hidden"))return;
   const row=parseFeedback(r.content).find(x=>x.label.startsWith(prefix));
   if(!row)throw Error("No feedback entry exists for this session.");
-  area.value=row.value;area.dataset.original=row.value;area.disabled=false;save.disabled=false;$("session-feedback-message").textContent="Edit your comments, then save to GitHub.";
+  area.value=row.value.replace(/\\n/g,"\n");area.dataset.original=row.value;area.disabled=false;save.disabled=false;$("session-feedback-message").textContent="Edit your comments, then save to GitHub.";
  }catch(e){$("session-feedback-message").textContent="Could not load feedback: "+e.message}
 }
 async function saveSessionFeedback(){
@@ -72,7 +72,7 @@ async function saveSessionFeedback(){
   const latest=await api("/api/file?path="+encodeURIComponent(path));
   const lines=latest.content.split("\n"),row=parseFeedback(latest.content).find(x=>x.label.startsWith(prefix));
   if(!row)throw Error("Session feedback entry was not found.");
-  const savedValue=row.value.trim(),original=area.dataset.original.trim(),next=area.value.trim().replace(/\r?\n/g,"; ");
+  const savedValue=row.value.trim(),original=area.dataset.original.trim(),next=area.value.trim().replace(/\r?\n/g,"\\n");
   if(savedValue!==original&&savedValue!==next)throw Error("Feedback was changed on another device. Copy your text before reopening this session.");
   lines[row.index]="- "+row.label+": "+(next||"**Not supplied**");
   await api("/api/feedback",{method:"PUT",body:JSON.stringify({path,content:lines.join("\n"),sha:latest.sha})});
@@ -215,7 +215,7 @@ async function renderSessions(path){
        if(state.feedbackOpen[path+"|"+date])details.open=true;
        const summary=el("summary",{},feedback?"Feedback · View comments":"Feedback · No comments yet");
        details.append(summary);
-       const content=el("p",{class:"session-feedback-copy"},feedback||"No feedback recorded for this session.");
+       const content=el("p",{class:"session-feedback-copy"},feedback.replace(/\\n/g,"\n")||"No feedback recorded for this session.");
        details.append(content);
        const b=el("button",{class:"secondary",type:"button"},feedback?"Edit feedback":"Enter feedback");
        b.onclick=()=>openSessionFeedback(date);
