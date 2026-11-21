@@ -223,7 +223,8 @@ async function renderSessions(path){
            try{await setSessionCancelled(path,dayKey,expected,!cancelled)}
            catch(e){button.disabled=false;button.textContent=cancelled?"Restore planned session":"Mark as not happening";alert("Could not save status: "+e.message)}
          };
-         card.append(button);
+         const workoutFold=card.querySelector(".session-plan-fold");
+         if(workoutFold)workoutFold.append(button);
        }
        for(const activity of same){
          if(expected&&activityCategory(activity)===expected)continue;
