@@ -89,6 +89,21 @@ $("session-feedback-modal").addEventListener("click",e=>{if(e.target===$("sessio
 function tab(name){for(const id of ["week","plan"])show(id,id===name);document.querySelectorAll("[data-tab]").forEach(b=>b.className=b.dataset.tab===name?"primary":"secondary")}
 function populateSelect(select,paths){select.replaceChildren();for(const path of paths){const d=dateFromFile(path);if(!d)continue;const o=el("option",{value:path},weeksToGo(d)+" · "+humanDate(d));select.append(o)}}
 function setWeek(path){state.current=path}
+async function setSessionCancelled(path,iso,kind,cancelled){
+ const latest=await api("/api/file?path="+encodeURIComponent(path));
+ const heading="## Session status";
+ const key=iso+" | "+kind;
+ const lines=latest.content.split("\n");
+ let start=lines.findIndex(line=>line.trim()===heading);
+ if(start<0){lines.push("",heading);start=lines.length-1}
+ let end=lines.findIndex((line,i)=>i>start&&/^## /.test(line));
+ if(end<0)end=lines.length;
+ const existing=lines.findIndex((line,i)=>i>start&&i<end&&line.startsWith("- "+key+":"));
+ if(existing>=0)lines.splice(existing,1);
+ if(cancelled)lines.splice(existing>=0?existing:end,0,"- "+key+": Not happening");
+ await api("/api/feedback",{method:"PUT",body:JSON.stringify({path,content:lines.join("\n"),sha:latest.sha})});
+ await renderSessions(path);
+}
 let sessionsRenderId=0;
 function workoutWeekId(date){const first=new Date("2026-10-26T12:00:00Z");const day=new Date(date+"T12:00:00Z");return String(Math.round((day-first)/604800000)+1).padStart(2,"0")}
 function formatStepEnd(step){
@@ -129,9 +144,14 @@ async function renderSessions(path){
      return;
    }
    // Read saved comments once per week, without exposing them in the public page source.
-   let feedbackByDate={};
+   let feedbackByDate={},sessionStatuses=new Set();
    try{
      const saved=await api("/api/file?path="+encodeURIComponent(path));
+     const statusSection=saved.content.split("\n## Session status\n")[1]?.split("\n## ")[0]||"";
+     for(const line of statusSection.split("\n")){
+       const m=line.match(/^- (\d{4}-\d{2}-\d{2} \| [a-z]+): Not happening$/);
+       if(m)sessionStatuses.add(m[1]);
+     }
      for(const row of parseFeedback(saved.content)){
        if(row.section==="## Session comments"){
          const matched=row.label.match(/^(Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday) (\d{1,2}) (\w+)/);
@@ -193,7 +213,18 @@ async function renderSessions(path){
            fold.addEventListener("toggle",()=>{state.feedbackOpen[key]=fold.open});
            card.append(fold);
          }
-       }else if(expected)card.append(el("p",{class:"muted"},"○ Awaiting "+(expected==="run"?"planned run":expected==="strength"?"strength session":"bouldering activity")));
+       }else if(expected){
+         const statusKey=dayKey+" | "+expected;
+         const cancelled=sessionStatuses.has(statusKey);
+         card.append(el("p",{class:"muted"},cancelled?"⊘ Not happening":"○ Awaiting "+(expected==="run"?"planned run":expected==="strength"?"strength session":"bouldering activity")));
+         const button=el("button",{class:"secondary",type:"button"},cancelled?"Restore planned session":"Mark as not happening");
+         button.onclick=async()=>{
+           button.disabled=true;button.textContent="Saving…";
+           try{await setSessionCancelled(path,dayKey,expected,!cancelled)}
+           catch(e){button.disabled=false;button.textContent=cancelled?"Restore planned session":"Mark as not happening";alert("Could not save status: "+e.message)}
+         };
+         card.append(button);
+       }
        for(const activity of same){
          if(expected&&activityCategory(activity)===expected)continue;
          const category=activityCategory(activity);
